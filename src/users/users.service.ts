@@ -13,6 +13,7 @@ export class UsersService {
   ) {}
 
   async create(createUserDto: CreateUserDto) {
+    console.log("🚀 ~ UsersService ~ create ~ createUserDto:", createUserDto)
     const { email, password, ...userData } = createUserDto;
 
     // Check if user already exists

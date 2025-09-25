@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User, Admin } from '../entities';
-import { RegisterDto, LoginDto, AdminLoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, AdminLoginDto, AdminRegisterDto, AdminStatusDto } from './dto/auth.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 @Injectable()
@@ -80,10 +80,10 @@ export class AuthService {
   }
 
   async adminLogin(adminLoginDto: AdminLoginDto) {
-    const { username, password } = adminLoginDto;
+    const { email, password } = adminLoginDto;
 
     // Find admin by username
-    const admin = await this.adminRepository.findOne({ where: { username } });
+    const admin = await this.adminRepository.findOne({ where: { email } });
     if (!admin) {
       throw new UnauthorizedException('Invalid credentials');
     }
@@ -107,6 +107,39 @@ export class AuthService {
     };
   }
 
+  async createAdmin(adminRegisterDto: AdminRegisterDto) {
+    const { username, email, password, name } = adminRegisterDto;
+
+    const existingByUsername = await this.adminRepository.findOne({ where: { username } });
+    if (existingByUsername) {
+      throw new ConflictException('Username already exists');
+    }
+
+    const existingByEmail = await this.adminRepository.findOne({ where: { email } });
+    if (existingByEmail) {
+      throw new ConflictException('Email already exists');
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const admin = this.adminRepository.create({
+      username,
+      name,
+      email,
+      password: hashedPassword,
+      role: 'admin',
+    });
+    const savedAdmin = await this.adminRepository.save(admin);
+
+    const payload: JwtPayload = { sub: savedAdmin.id, email: savedAdmin.email, type: 'admin' };
+    const access_token = this.jwtService.sign(payload);
+
+    const { password: _, ...adminWithoutPassword } = savedAdmin;
+
+    return {
+      access_token,
+      user: adminWithoutPassword,
+    };
+  }
   async createDefaultAdmin() {
     const existingAdmin = await this.adminRepository.findOne({ 
       where: { username: 'admin' } 
@@ -122,5 +155,35 @@ export class AuthService {
       });
       await this.adminRepository.save(admin);
     }
+  }
+
+  async listAdmins() {
+    return this.adminRepository.find({
+      select: ['id', 'username', 'name', 'email', 'role', 'status', 'createdAt'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async changeAdminStatus(id: number, adminStatusDto: AdminStatusDto) {
+    const { status } = adminStatusDto;
+    const admin = await this.adminRepository.findOne({ where: { id } });
+    if (!admin) {
+      throw new UnauthorizedException('Admin not found');
+    }
+    admin.status = status;
+    await this.adminRepository.save(admin);
+    const { password: _, ...result } = admin;
+    return result;
+  }
+
+  async resetAdminPassword(id: number) {
+    const admin = await this.adminRepository.findOne({ where: { id } });
+    if (!admin) {
+      throw new UnauthorizedException('Admin not found');
+    }
+    admin.password = await bcrypt.hash('abc123', 10);
+    await this.adminRepository.save(admin);
+    const { password: _, ...result } = admin;
+    return result;
   }
 } 

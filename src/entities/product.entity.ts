@@ -31,6 +31,9 @@ export class Product {
   @Column({ type: 'text', nullable: true })
   images: string; // JSON array as text
 
+  @Column({ type: 'int', name: 'no_of_sell', default: 0 })
+  noOfSell: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
